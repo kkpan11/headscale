@@ -43,6 +43,10 @@ func (id NodeID) Uint64() uint64 {
 	return uint64(id)
 }
 
+func (id NodeID) String() string {
+	return strconv.FormatUint(id.Uint64(), util.Base10)
+}
+
 // Node is a Headscale client.
 type Node struct {
 	ID NodeID `gorm:"primary_key"`
@@ -108,20 +112,20 @@ type Node struct {
 	// parts of headscale.
 	GivenName string `gorm:"type:varchar(63);unique_index"`
 	UserID    uint
-	User      User `gorm:"foreignKey:UserID"`
+	User      User `gorm:"constraint:OnDelete:CASCADE;"`
 
 	RegisterMethod string
 
 	ForcedTags StringList
 
 	// TODO(kradalby): This seems like irrelevant information?
-	AuthKeyID uint
-	AuthKey   *PreAuthKey
+	AuthKeyID *uint       `sql:"DEFAULT:NULL"`
+	AuthKey   *PreAuthKey `gorm:"constraint:OnDelete:SET NULL;"`
 
 	LastSeen *time.Time
 	Expiry   *time.Time
 
-	Routes []Route
+	Routes []Route `gorm:"constraint:OnDelete:CASCADE;"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -390,23 +394,32 @@ func (node *Node) Proto() *v1.Node {
 	return nodeProto
 }
 
-func (node *Node) GetFQDN(dnsConfig *tailcfg.DNSConfig, baseDomain string) (string, error) {
+func (node *Node) GetFQDN(cfg *Config, baseDomain string) (string, error) {
 	var hostname string
-	if dnsConfig != nil && dnsConfig.Proxied { // MagicDNS
+	if cfg.DNSConfig != nil && cfg.DNSConfig.Proxied { // MagicDNS
 		if node.GivenName == "" {
 			return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeHasNoGivenName)
 		}
 
-		if node.User.Name == "" {
-			return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeUserHasNoName)
-		}
-
 		hostname = fmt.Sprintf(
-			"%s.%s.%s",
+			"%s.%s",
 			node.GivenName,
-			node.User.Name,
 			baseDomain,
 		)
+
+		if cfg.DNSUserNameInMagicDNS {
+			if node.User.Name == "" {
+				return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeUserHasNoName)
+			}
+
+			hostname = fmt.Sprintf(
+				"%s.%s.%s",
+				node.GivenName,
+				node.User.Name,
+				baseDomain,
+			)
+		}
+
 		if len(hostname) > MaxHostnameLength {
 			return "", fmt.Errorf(
 				"failed to create valid FQDN (%s): %w",

@@ -215,7 +215,7 @@ func SetTags(
 		return nil
 	}
 
-	newTags := types.StringList{}
+	var newTags types.StringList
 	for _, tag := range tags {
 		if !util.StringOrPrefixListContains(newTags, tag) {
 			newTags = append(newTags, tag)
@@ -279,7 +279,7 @@ func DeleteNode(tx *gorm.DB,
 	}
 
 	// Unscoped causes the node to be fully removed from the database.
-	if err := tx.Unscoped().Delete(&node).Error; err != nil {
+	if err := tx.Unscoped().Delete(&types.Node{}, node.ID).Error; err != nil {
 		return changed, err
 	}
 
@@ -452,7 +452,7 @@ func GetAdvertisedRoutes(tx *gorm.DB, node *types.Node) ([]netip.Prefix, error) 
 		return nil, fmt.Errorf("getting advertised routes for node(%d): %w", node.ID, err)
 	}
 
-	prefixes := []netip.Prefix{}
+	var prefixes []netip.Prefix
 	for _, route := range routes {
 		prefixes = append(prefixes, netip.Prefix(route.Prefix))
 	}
@@ -478,7 +478,7 @@ func GetEnabledRoutes(tx *gorm.DB, node *types.Node) ([]netip.Prefix, error) {
 		return nil, fmt.Errorf("getting enabled routes for node(%d): %w", node.ID, err)
 	}
 
-	prefixes := []netip.Prefix{}
+	var prefixes []netip.Prefix
 	for _, route := range routes {
 		prefixes = append(prefixes, netip.Prefix(route.Prefix))
 	}
@@ -661,7 +661,7 @@ func GenerateGivenName(
 }
 
 func DeleteExpiredEphemeralNodes(tx *gorm.DB,
-	inactivityThreshhold time.Duration,
+	inactivityThreshold time.Duration,
 ) ([]types.NodeID, []types.NodeID) {
 	users, err := ListUsers(tx)
 	if err != nil {
@@ -679,7 +679,7 @@ func DeleteExpiredEphemeralNodes(tx *gorm.DB,
 		for idx, node := range nodes {
 			if node.IsEphemeral() && node.LastSeen != nil &&
 				time.Now().
-					After(node.LastSeen.Add(inactivityThreshhold)) {
+					After(node.LastSeen.Add(inactivityThreshold)) {
 				expired = append(expired, node.ID)
 
 				log.Info().
